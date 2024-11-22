@@ -127,7 +127,7 @@ const parseVkPosts = async (url) => {
                 });
             });
 
-            // Проверяем, является ли пост релевантным
+            // Проверяем, является ли пост релевантнымрапрап
             if (isRelevantPost(postText, comments, keywords)) {
                 posts.push({
                     id: postId,
