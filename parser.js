@@ -1,6 +1,7 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 const iconv = require('iconv-lite');
+const natural = require('natural'); // Для обработки естественного языка
 
 /**
  * Задержка выполнения на указанное количество миллисекунд.
@@ -10,12 +11,62 @@ const iconv = require('iconv-lite');
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
+ * Проверяет, содержит ли текст слова, связанные с ключевой темой.
+ * @param {string} text - Текст для проверки.
+ * @param {Array<string>} keywords - Список ключевых слов.
+ * @returns {boolean} - True, если текст связан с ключевой темой.
+ */
+const isRelevantText = (text, keywords) => {
+    const tokenizer = new natural.WordTokenizer(); // Токенизатор слов
+    const stemmer = natural.PorterStemmerRu; // Стеммер для русского языка
+    const tokens = tokenizer.tokenize(text.toLowerCase()); // Разделяем текст на слова и приводим к нижнему регистру
+    const stems = tokens.map(word => stemmer.stem(word)); // Приводим каждое слово к основе
+
+    // Проверяем, есть ли пересечения основ текста с основами ключевых слов
+    return keywords.some(keyword => {
+        const keywordStem = stemmer.stem(keyword.toLowerCase());
+        return stems.includes(keywordStem);
+    });
+};
+
+/**
+ * Проверяет, является ли пост релевантным, анализируя текст поста и комментарии.
+ * @param {string} postText - Текст поста.
+ * @param {Array} comments - Массив комментариев.
+ * @param {Array<string>} keywords - Список ключевых слов.
+ * @returns {boolean} - True, если пост или его комментарии связаны с ключевой темой.
+ */
+const isRelevantPost = (postText, comments, keywords) => {
+    // Проверяем текст поста
+    if (isRelevantText(postText, keywords)) {
+        return true;
+    }
+
+    // Проверяем текст комментариев
+    for (const comment of comments) {
+        if (isRelevantText(comment.text, keywords)) {
+            return true;
+        }
+    }
+
+    return false;
+};
+
+/**
  * Парсит посты с комментариями с указанной страницы ВКонтакте.
  * @param {string} url - URL страницы.
  * @returns {Promise<Array>} Массив объектов с постами и комментариями.
  */
 const parseVkPosts = async (url) => {
     try {
+        // Список ключевых слов
+        const keywords = [
+            "озеленение", "посадка деревьев", "зелёные насаждения", "садоводство",
+            "вырубка", "снос деревьев", "уничтожение зелени",
+            "парк", "сквер", "аллея", "ландшафтный дизайн",
+            "реконструкция", "благоустройство", "контракт", "дружба"
+        ];
+
         // Получение HTML страницы
         const response = await axios.get(url, {
             responseType: 'arraybuffer',
@@ -76,21 +127,26 @@ const parseVkPosts = async (url) => {
                 });
             });
 
-            posts.push({
-                id: postId,
-                author: postAuthor,
-                date: postDate,
-                text: postText,
-                images: images,
-                comments: comments
-            });
+            // Проверяем, является ли пост релевантным
+            if (isRelevantPost(postText, comments, keywords)) {
+                posts.push({
+                    id: postId,
+                    author: postAuthor,
+                    date: postDate,
+                    text: postText,
+                    images: images,
+                    comments: comments
+                });
 
-            // Отображение прогресса
-            console.log(`(${i + 1}/${totalPosts}) Пост "${postText.substring(0, 30)}..." успешно обработан`);
+                // Отображение прогресса
+                console.log(`(${i + 1}/${totalPosts}) Пост "${postText.substring(0, 30)}..." добавлен в результат`);
+            } else {
+                console.log(`(${i + 1}/${totalPosts}) Пост "${postText.substring(0, 30)}..." не соответствует критериям`);
+            }
 
             // Задержка перед следующим постом
             if (i < totalPosts - 1) {
-                await delay(5000); // 10 секунд
+                await delay(10000); // 10 секунд
             }
         }
 
